@@ -3,12 +3,15 @@
 namespace App\Models;
 
 use App\Enums\OfferStatus;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Offer extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
         'supplier_id',
         'property_id',
