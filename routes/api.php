@@ -1,3 +1,6 @@
 <?php
 
-// API endpoints are registered here and receive the default "api" middleware group.
+use App\Http\Controllers\SupplierImportController;
+use Illuminate\Support\Facades\Route;
+
+Route::post('/suppliers/{supplier:slug}/imports', [SupplierImportController::class, 'store']);
