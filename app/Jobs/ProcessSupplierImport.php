@@ -3,9 +3,11 @@
 namespace App\Jobs;
 
 use App\Enums\ImportStatus;
+use App\Enums\OfferStatus;
 use App\Models\Import;
 use App\Models\Offer;
 use App\Models\Property;
+use App\Models\Reservation;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -79,6 +81,19 @@ class ProcessSupplierImport implements ShouldQueue
 
         $timestamp = now();
         $properties = [];
+        $externalOfferIds = array_column($this->offers, 'external_offer_id');
+
+        $existingOffers = Offer::query()
+            ->where('supplier_id', $import->supplier_id)
+            ->whereIn('external_offer_id', $externalOfferIds)
+            ->lockForUpdate()
+            ->get(['id', 'external_offer_id'])
+            ->keyBy('external_offer_id');
+
+        $reservedOfferIds = Reservation::query()
+            ->whereIn('offer_id', $existingOffers->pluck('id'))
+            ->pluck('offer_id')
+            ->flip();
 
         foreach ($this->offers as $offer) {
             $externalCode = $offer['property']['external_code'];
@@ -101,13 +116,16 @@ class ProcessSupplierImport implements ShouldQueue
             ->whereIn('external_code', array_keys($properties))
             ->pluck('id', 'external_code');
 
-        $offers = array_map(function (array $offer) use ($import, $propertyIds, $timestamp): array {
+        $offers = array_map(function (array $offer) use ($import, $propertyIds, $timestamp, $existingOffers, $reservedOfferIds): array {
+            $existingOffer = $existingOffers->get($offer['external_offer_id']);
+            $isReserved = $existingOffer !== null && $reservedOfferIds->has($existingOffer->id);
+
             return [
                 'supplier_id' => $import->supplier_id,
                 'property_id' => $propertyIds[$offer['property']['external_code']],
                 'import_id' => $import->id,
                 'external_offer_id' => $offer['external_offer_id'],
-                'status' => $offer['status'],
+                'status' => $isReserved ? OfferStatus::Unavailable->value : $offer['status'],
                 'price_amount' => $offer['price_amount'],
                 'currency' => $offer['currency'],
                 'check_in_date' => $offer['check_in_date'],

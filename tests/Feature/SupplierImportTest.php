@@ -3,10 +3,12 @@
 namespace Tests\Feature;
 
 use App\Enums\ImportStatus;
+use App\Enums\OfferStatus;
 use App\Jobs\ProcessSupplierImport;
 use App\Models\Import;
 use App\Models\Offer;
 use App\Models\Property;
+use App\Models\Reservation;
 use App\Models\Supplier;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\Queue;
@@ -161,6 +163,31 @@ class SupplierImportTest extends TestCase
             'id' => $offerId,
             'price_amount' => '199.99',
             'status' => 'unavailable',
+            'import_id' => $secondImport->id,
+        ]);
+    }
+
+    public function test_reimporting_a_reserved_offer_keeps_it_unavailable(): void
+    {
+        $supplier = Supplier::factory()->create();
+        $payload = $this->offerPayload();
+        $firstImport = $this->queuedImport($supplier);
+
+        (new ProcessSupplierImport($firstImport->id, [$payload]))->handle();
+
+        $offer = Offer::query()->sole();
+        Reservation::query()->create([
+            'offer_id' => $offer->id,
+            'reserved_at' => now(),
+        ]);
+        $offer->update(['status' => OfferStatus::Unavailable]);
+
+        $secondImport = $this->queuedImport($supplier);
+        (new ProcessSupplierImport($secondImport->id, [$payload]))->handle();
+
+        $this->assertDatabaseHas('offers', [
+            'id' => $offer->id,
+            'status' => OfferStatus::Unavailable->value,
             'import_id' => $secondImport->id,
         ]);
     }
