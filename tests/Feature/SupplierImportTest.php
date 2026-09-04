@@ -60,6 +60,53 @@ class SupplierImportTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_import_validation_rejects_missing_and_malformed_offer_data(): void
+    {
+        Queue::fake();
+        $supplier = Supplier::factory()->create();
+        $payload = $this->offerPayload();
+        $missingPropertyName = $payload;
+        unset($missingPropertyName['property']['name']);
+
+        $invalidStayDates = $payload;
+        $invalidStayDates['check_in_date'] = '2026-10-15';
+
+        $invalidValidityDates = $payload;
+        $invalidValidityDates['valid_from'] = '2026-09-06 10:00:00';
+
+        $invalidCurrency = $payload;
+        $invalidCurrency['currency'] = 'EU1';
+
+        foreach ([
+            [[], 'offers'],
+            [['offers' => [$missingPropertyName]], 'offers.0.property.name'],
+            [['offers' => [$invalidStayDates]], 'offers.0.check_in_date'],
+            [['offers' => [$invalidValidityDates]], 'offers.0.valid_from'],
+            [['offers' => [$invalidCurrency]], 'offers.0.currency'],
+        ] as [$request, $field]) {
+            $this->postJson($this->importUrl($supplier), $request)
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors($field);
+        }
+
+        $this->assertDatabaseCount('imports', 0);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_import_normalizes_currency_before_queueing_the_job(): void
+    {
+        Queue::fake();
+        $supplier = Supplier::factory()->create();
+        $payload = $this->offerPayload(['currency' => ' eur ']);
+
+        $this->postJson($this->importUrl($supplier), ['offers' => [$payload]])
+            ->assertAccepted();
+
+        Queue::assertPushed(ProcessSupplierImport::class, function (ProcessSupplierImport $job): bool {
+            return $job->offers[0]['currency'] === 'EUR';
+        });
+    }
+
     public function test_unknown_supplier_returns_not_found(): void
     {
         Queue::fake();

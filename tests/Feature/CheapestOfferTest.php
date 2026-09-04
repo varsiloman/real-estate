@@ -113,6 +113,21 @@ class CheapestOfferTest extends TestCase
             ->assertJsonPath('data.0.id', $firstOffer->id);
     }
 
+    public function test_empty_result_set_is_valid_and_currency_is_normalized(): void
+    {
+        $property = Property::factory()->create();
+        $supplier = Supplier::factory()->create();
+        $offer = $this->currentOffer($property, $supplier);
+
+        $this->getJson('/api/offers/cheapest?check_in_date=2026-10-12&check_out_date=2026-10-15&currency=%20eur%20')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $offer->id);
+
+        $this->getJson('/api/offers/cheapest?check_in_date=2026-12-12&check_out_date=2026-12-15&currency=EUR')
+            ->assertOk()
+            ->assertExactJson(['data' => []]);
+    }
+
     public function test_invalid_query_parameters_are_rejected(): void
     {
         $this->getJson('/api/offers/cheapest')

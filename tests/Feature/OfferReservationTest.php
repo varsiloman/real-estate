@@ -98,6 +98,34 @@ class OfferReservationTest extends TestCase
         ]);
     }
 
+    public function test_already_reserved_offer_returns_conflict_before_validity_is_checked(): void
+    {
+        $offer = $this->reservableOffer([
+            'valid_until' => now('UTC')->subSecond(),
+        ]);
+        Reservation::query()->create([
+            'offer_id' => $offer->id,
+            'reserved_at' => now('UTC'),
+        ]);
+
+        $this->postJson($this->reservationUrl($offer))->assertConflict();
+    }
+
+    public function test_successfully_reserved_offer_is_excluded_from_cheapest_offer_results(): void
+    {
+        $offer = $this->reservableOffer([
+            'currency' => 'EUR',
+            'check_in_date' => '2026-10-12',
+            'check_out_date' => '2026-10-15',
+        ]);
+
+        $this->postJson($this->reservationUrl($offer))->assertCreated();
+
+        $this->getJson('/api/offers/cheapest?check_in_date=2026-10-12&check_out_date=2026-10-15&currency=EUR')
+            ->assertOk()
+            ->assertExactJson(['data' => []]);
+    }
+
     /**
      * @param  array<string, mixed>  $overrides
      */
